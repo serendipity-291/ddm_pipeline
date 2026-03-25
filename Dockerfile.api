@@ -1,0 +1,32 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install base dependencies
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    requests \
+    joblib \
+    scipy \
+    PyWavelets \
+    influxdb-client \
+    pandas \
+    pyarrow \
+    scikit-learn \
+    mlflow \
+    tqdm \
+    boto3 \
+    scipy
+
+# Install CPU-only PyTorch separately (different index URL)
+RUN pip install --no-cache-dir \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
+# Copy scripts directory (contains api_server.py and sensor_simulator.py)
+COPY scripts/ ./scripts/
+
+# The working directory will have data/ mounted as a volume
+EXPOSE 8000
+
+CMD ["uvicorn", "scripts.api_server:app", "--host", "0.0.0.0", "--port", "8000", "--forwarded-allow-ips", "*"]

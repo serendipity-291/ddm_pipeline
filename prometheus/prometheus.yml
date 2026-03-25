@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s # Mặc định cứ 15 giây đi lấy dữ liệu một lần
+  evaluation_interval: 15s # Thời gian đánh giá các quy tắc (rules)
+
+# Danh sách các dịch vụ cần giám sát
+scrape_configs:
+  # 1. Tự giám sát chính nó
+  - job_name: 'prometheus'
+    metrics_path: '/prometheus/metrics'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. Giám sát các Container (thông qua cAdvisor - nên thêm vào compose)
+  - job_name: 'containers'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # 3. Giám sát máy chủ (thông qua Node Exporter)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # 4. Giám sát Airflow (Thẻ qua StatsD Exporter)
+  - job_name: 'airflow'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['statsd-exporter:9102']
+
+  # 5. Giám sát GPU (Cần nvidia-gpu-exporter trong WSL2)
+  - job_name: 'nvidia-exporter'
+    static_configs:
+      - targets: ['172.30.44.214:9835']

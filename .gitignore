@@ -1,0 +1,49 @@
+# Course / report folders (prefix ddm at repo root)
+/ddm*/
+**/ddm*/
+
+# Secrets — copy from .env.example
+.env
+.env.local
+.env.*.local
+
+# Generated data and models (recreated by FE + training)
+/data/*
+!/data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+.envrc
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / frontend build
+dashboard/node_modules/
+dashboard/dist/
+
+# MLflow local runs (if any)
+mlruns/
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.cursor/

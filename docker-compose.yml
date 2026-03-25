@@ -1,0 +1,348 @@
+version: '3.8'
+
+# Network for communication between all services
+networks:
+  mlops_network:
+    driver: bridge
+
+# Persistent volumes for data storage
+volumes:
+  minio_data:
+  postgres_mlflow_data:
+  postgres_airflow_data:
+  prometheus_data:
+  grafana_data:
+  influxdb_data:
+
+services:
+  # --- STORAGE LAYER ---
+
+  # MinIO: S3-compatible object storage for artifacts and models
+  minio:
+    image: minio/minio
+    container_name: minio
+    restart: always
+    ports:
+      - "9000:9000" # API Access
+      - "9001:9001" # Web Console UI
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - mlops_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # InfluxDB: Time-series database for performance metrics and logs
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    restart: always
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=my-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_DB}
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - mlops_network
+
+  # MinIO Init: Automatically creates the 'mlflow-artifacts' bucket on startup
+  minio_init:
+    image: minio/mc
+    container_name: minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb myminio/mlflow-artifacts || true;
+      exit 0;
+      "
+    networks:
+      - mlops_network
+
+  # --- EXPERIMENT TRACKING LAYER (MLFLOW) ---
+
+  # MLFlow DB: PostgreSQL database for storing MLFlow experiment metadata
+  db_mlflow:
+    image: postgres:15
+    container_name: db_mlflow
+    restart: always
+    environment:
+      POSTGRES_DB: ${MLFLOW_DB_NAME}
+      POSTGRES_USER: ${MLFLOW_DB_USER}
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD}
+    volumes:
+      - postgres_mlflow_data:/var/lib/postgresql/data
+    networks:
+      - mlops_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MLFLOW_DB_USER} -d ${MLFLOW_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MLFlow: Server for experiment tracking, model registry, and artifact management
+  mlflow:
+    image: ghcr.io/mlflow/mlflow
+    container_name: mlflow
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      db_mlflow:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL}
+    command: >
+      mlflow server 
+      --backend-store-uri ${MLFLOW_DATABASE_URL}
+      --default-artifact-root s3://mlflow-artifacts/
+      --host 0.0.0.0
+      --allowed-hosts=*
+    networks:
+      - mlops_network
+
+  # --- WORKFLOW ORCHESTRATION LAYER (AIRFLOW) ---
+
+  # Airflow DB: PostgreSQL database for Airflow metadata engine
+  postgres_airflow:
+    image: postgres:15
+    container_name: db_airflow
+    restart: always
+    environment:
+      POSTGRES_DB: ${AIRFLOW_DB_NAME}
+      POSTGRES_USER: ${AIRFLOW_DB_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    networks:
+      - mlops_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_DB_USER} -d ${AIRFLOW_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Airflow Init: Handles database migration and admin user creation
+  airflow-init:
+    image: apache/airflow:2.7.0
+    container_name: airflow_init
+    depends_on:
+      postgres_airflow:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DATABASE_URL}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - _PIP_ADDITIONAL_DEPENDENCIES=${_PIP_ADDITIONAL_DEPENDENCIES}
+      - AIRFLOW__METRICS__EXPOSE_CONFIG=True
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    command: >
+      bash -c "airflow db init &&
+      airflow users create --username ${SHARED_USER} --password ${SHARED_PASSWORD} --firstname Admin --lastname User --role Admin --email admin@example.com"
+    networks:
+      - mlops_network
+
+  # Airflow Webserver: UI for managing and monitoring DAGs and tasks
+  airflow-webserver:
+    image: apache/airflow:2.7.0
+    container_name: airflow_webserver
+    restart: always
+    depends_on:
+      postgres_airflow:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DATABASE_URL}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__WEBSERVER__BASE_URL=${AIRFLOW_BASE_URL}
+      - AIRFLOW__METRICS__STATS_ON=True
+      - AIRFLOW__METRICS__STATSD_HOST=statsd-exporter
+      - AIRFLOW__METRICS__STATSD_PORT=8125
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    ports:
+      - "8080:8080"
+    command: webserver
+    networks:
+      - mlops_network
+    volumes:
+      - ./scripts/airflow_dags:/opt/airflow/dags
+
+  # Airflow Scheduler: Responsible for triggering tasks according to DAG definitions
+  airflow-scheduler:
+    image: apache/airflow:2.7.0
+    container_name: airflow_scheduler
+    restart: always
+    depends_on:
+      postgres_airflow:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DATABASE_URL}
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - _PIP_ADDITIONAL_DEPENDENCIES=${_PIP_ADDITIONAL_DEPENDENCIES}
+      - AIRFLOW__METRICS__EXPOSE_CONFIG=True
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    command: scheduler
+    networks:
+      - mlops_network
+    volumes:
+      - ./scripts/airflow_dags:/opt/airflow/dags
+
+  # --- OBSERVABILITY LAYER (MONITORING) ---
+
+  # StatsD Exporter: Bridge between Airflow StatsD metrics and Prometheus
+  statsd-exporter:
+    image: prom/statsd-exporter
+    container_name: statsd_exporter
+    restart: always
+    ports:
+      - "9102:9102"
+      - "8125:8125/udp"
+    networks:
+      - mlops_network
+
+  # Prometheus: Time series database for monitoring and alerting
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.external-url=http://localhost/prometheus/"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - mlops_network
+
+  # Grafana: Monitoring dashboard for metric visualization
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SERVER_ROOT_URL=http://localhost/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SECURITY_ADMIN_USER=${SHARED_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${SHARED_PASSWORD}
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - mlops_network
+
+  # API Server: FastAPI backend for simulation control
+  api_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: api_server
+    restart: always
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - MLFLOW_URL=http://mlflow:5000
+      - MINIO_URL=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL}
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts
+    networks:
+      - mlops_network
+
+  # Drift Monitor: Polls InfluxDB, detects confidence drift, triggers Airflow retraining
+  drift_monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: drift_monitor
+    restart: always
+    command: ["python", "scripts/drift_monitor.py"]
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - AIRFLOW_URL=http://airflow-webserver:8080
+      - AIRFLOW_USER=${SHARED_USER}
+      - AIRFLOW_PASS=${SHARED_PASSWORD}
+      - MLFLOW_URL=http://mlflow:5000
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts
+    depends_on:
+      - influxdb
+      - api_server
+    networks:
+      - mlops_network
+
+  # Nginx: Reverse proxy for centralized access
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./dashboard/dist:/usr/share/nginx/html/dashboard:ro
+    depends_on:
+      - airflow-webserver
+      - grafana
+      - mlflow
+      - minio
+      - prometheus
+      - api_server
+    networks:
+      - mlops_network
+
+  # cAdvisor: Collects and exports resource usage of running containers
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - mlops_network
+
+  # Node Exporter: Exports hardware and operating system metrics from the host
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    networks:
+      - mlops_network
