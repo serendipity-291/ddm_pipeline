@@ -1,0 +1,51 @@
+name: Release evidence bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: "Optional image digest for traceability"
+        required: false
+        type: string
+      mlflow_run_id:
+        description: "Optional MLflow run id"
+        required: false
+        type: string
+      mlflow_model_version:
+        description: "Optional MLflow model version"
+        required: false
+        type: string
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate release metadata
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository }}/api
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          MLFLOW_RUN_ID: ${{ inputs.mlflow_run_id }}
+          MLFLOW_MODEL_VERSION: ${{ inputs.mlflow_model_version }}
+          MLFLOW_MODEL_ALIAS: production
+          UNIT_TESTS_PASSED: unknown
+          INTEGRATION_TESTS_PASSED: unknown
+          E2E_TESTS_PASSED: unknown
+        run: python tools/generate_release_metadata.py
+
+      - name: Upload release evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: |
+            release-metadata.json

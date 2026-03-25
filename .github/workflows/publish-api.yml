@@ -30,8 +30,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Build and push image
+        id: build_push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Write release metadata snippet
         run: |
-          docker build -f Dockerfile.api -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
-          docker push "${IMAGE}:${{ github.sha }}"
-          docker push "${IMAGE}:latest"
+          cat <<EOF > image-release.json
+          {
+            "repository": "${{ github.repository }}",
+            "git_sha": "${{ github.sha }}",
+            "image": "${{ env.IMAGE }}",
+            "digest": "${{ steps.build_push.outputs.digest }}"
+          }
+          EOF
+
+      - name: Upload publish metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-image-metadata
+          path: image-release.json

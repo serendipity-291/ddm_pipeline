@@ -15,6 +15,15 @@ permissions:
   contents: read
 
 jobs:
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   dashboard:
     name: Dashboard (lint + build)
     runs-on: ubuntu-latest
@@ -40,7 +49,7 @@ jobs:
         run: npm run build
 
   python-sanity:
-    name: Python (deps + compileall)
+    name: Python (compile + unit + integration)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,10 +61,28 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install requirements
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Byte-compile scripts
         run: python -m compileall -q scripts
+
+      - name: Unit tests + coverage
+        run: |
+          pytest -m unit --cov=scripts --cov-report=xml --cov-report=term --junitxml=unit-junit.xml
+
+      - name: Integration tests
+        run: |
+          pytest -m integration --junitxml=integration-junit.xml
+
+      - name: Upload Python test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-artifacts
+          path: |
+            coverage.xml
+            unit-junit.xml
+            integration-junit.xml
 
   docker-api:
     name: Docker (Dockerfile.api)

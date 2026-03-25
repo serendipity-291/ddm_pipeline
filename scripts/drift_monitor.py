@@ -23,20 +23,21 @@ from datetime import datetime, timezone
 import mlflow
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+from config import get_env
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [DRIFT] %(message)s")
 log = logging.getLogger(__name__)
 
 # ── Config ──────────────────────────────────────────────────────────────────
-INFLUXDB_URL   = os.environ.get("INFLUXDB_URL",   "http://localhost:8086")
-INFLUXDB_TOKEN = "UziSGCgplwTUlHTdRiHWPIwFasDqSPbKxqfx5C_I7rsZuICEvvgAbRD3L1_a8U4R48f7mmJs9QMxX0dmjjNdEg=="
-INFLUXDB_ORG   = "my-org"
-INFLUXDB_BUCKET = "bearing_data"
+INFLUXDB_URL = get_env("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = get_env("INFLUXDB_TOKEN", required=True)
+INFLUXDB_ORG = get_env("INFLUXDB_ORG", "my-org")
+INFLUXDB_BUCKET = get_env("INFLUXDB_BUCKET_BEARING", "bearing_data")
 
-AIRFLOW_URL    = os.environ.get("AIRFLOW_URL",   "http://localhost:8080")
-AIRFLOW_USER   = os.environ.get("AIRFLOW_USER",  "admin")
-AIRFLOW_PASS   = os.environ.get("AIRFLOW_PASS",  "admin")
-MLFLOW_URL     = os.environ.get("MLFLOW_URL",    "http://localhost:5000")
+AIRFLOW_URL = get_env("AIRFLOW_URL", "http://localhost:8080")
+AIRFLOW_USER = get_env("AIRFLOW_USER", "admin")
+AIRFLOW_PASS = get_env("AIRFLOW_PASS", "admin")
+MLFLOW_URL = get_env("MLFLOW_URL", "http://localhost:5000")
 
 import scipy.stats as stats
 

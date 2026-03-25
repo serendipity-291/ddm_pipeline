@@ -9,10 +9,12 @@ Usage: python scripts/setup_grafana.py
 
 import os
 import requests
+from config import get_env
 
-GRAFANA_URL  = os.environ.get("GRAFANA_URL",  "http://localhost/grafana")
-GRAFANA_USER = os.environ.get("GRAFANA_USER", "admin")
-GRAFANA_PASS = os.environ.get("GRAFANA_PASS", "password123")
+GRAFANA_URL = get_env("GRAFANA_URL", "http://localhost/grafana")
+GRAFANA_USER = get_env("GRAFANA_USER", "admin")
+GRAFANA_PASS = get_env("GRAFANA_PASS", "password123")
+INFLUXDB_TOKEN = get_env("INFLUXDB_TOKEN", required=True)
 
 INFLUX_DS   = "InfluxDB"
 BUCKET      = "bearing_data"
@@ -263,12 +265,11 @@ def get_or_create_datasource():
                 print(f"✓ Datasource '{INFLUX_DS}' already exists (id={ds['id']})")
                 return
     print(f"  Creating datasource '{INFLUX_DS}'...")
-    token = "UziSGCgplwTUlHTdRiHWPIwFasDqSPbKxqfx5C_I7rsZuICEvvgAbRD3L1_a8U4R48f7mmJs9QMxX0dmjjNdEg=="
     payload = {
         "name": INFLUX_DS, "type": "influxdb",
         "url": "http://influxdb:8086", "access": "proxy", "isDefault": True,
         "jsonData": {"version": "Flux", "organization": ORG, "defaultBucket": BUCKET},
-        "secureJsonData": {"token": token},
+        "secureJsonData": {"token": INFLUXDB_TOKEN},
     }
     r2 = SESSION.post(f"{GRAFANA_URL}/api/datasources", json=payload)
     if r2.status_code in (200, 201):

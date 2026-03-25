@@ -270,6 +270,9 @@ services:
     restart: always
     environment:
       - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB_ORG=my-org
+      - INFLUXDB_BUCKET_BEARING=bearing_data
       - MLFLOW_URL=http://mlflow:5000
       - MINIO_URL=http://minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
@@ -283,7 +286,7 @@ services:
     networks:
       - mlops_network
 
-  # Drift Monitor: Polls InfluxDB, detects confidence drift, triggers Airflow retraining
+  # Drift Monitor: Polls InfluxDB, detects K-S drift on RMS, triggers Airflow retraining
   drift_monitor:
     build:
       context: .
@@ -293,6 +296,9 @@ services:
     command: ["python", "scripts/drift_monitor.py"]
     environment:
       - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB_ORG=my-org
+      - INFLUXDB_BUCKET_BEARING=bearing_data
       - AIRFLOW_URL=http://airflow-webserver:8080
       - AIRFLOW_USER=${SHARED_USER}
       - AIRFLOW_PASS=${SHARED_PASSWORD}
@@ -345,4 +351,4 @@ services:
     ports:
       - "9100:9100"
     networks:
-      - mlops_network
+      - mlops_network

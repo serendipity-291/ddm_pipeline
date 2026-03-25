@@ -1,0 +1,36 @@
+name: Model smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/ml_utils.py
+      - scripts/model_training.py
+      - tests/unit/test_model_smoke.py
+      - requirements-dev.txt
+      - requirements.txt
+
+permissions:
+  contents: read
+
+jobs:
+  model-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dev requirements
+        run: pip install -r requirements-dev.txt
+      - name: Run model smoke tests
+        run: pytest -m model_smoke --junitxml=model-smoke-junit.xml
+      - name: Upload model smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-smoke-junit
+          path: model-smoke-junit.xml

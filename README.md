@@ -267,7 +267,7 @@ Thư mục bind-mount: `./data` → `api_server` / `drift_monitor` (processed, m
 - **SHARED_***: user/password dùng chung cho Grafana admin và (theo compose) tài khoản Airflow được tạo bởi `airflow-init`.
 - **MINIO_***, **AWS_***, **MLFLOW_S3_***: truy cập artifact trên MinIO.
 - **MLFLOW_DATABASE_URL**, **AIRFLOW_DATABASE_URL**: chuỗi kết nối Postgres (khớp user/password DB).
-- **INFLUXDB_***: user/password bucket khởi tạo; token API cần thống nhất với ứng dụng đọc/ghi Influx (một số script có thể hardcode token trong môi trường dev — nên đồng bộ khi đổi).
+- **INFLUXDB_***: user/password + `INFLUXDB_TOKEN` + `INFLUXDB_ORG` + `INFLUXDB_BUCKET_BEARING` phải đồng bộ với InfluxDB setup. Một số service (`api_server`, `drift_monitor`, `setup_grafana`) được cấu hình fail-fast khi thiếu token.
 
 ---
 
@@ -404,6 +404,9 @@ Workflow chạy trên GitHub (Actions). Trạng thái nhánh `main`:
 
 [![CI](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/ci.yml)
 [![Publish API](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/publish-api.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/publish-api.yml)
+[![Model smoke](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/model-smoke.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/model-smoke.yml)
+[![Nightly e2e](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/nightly-e2e.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/nightly-e2e.yml)
+[![Release evidence](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/release-evidence.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/release-evidence.yml)
 
 *(Nếu repo fork, đổi `serendipity-291/ddm_pipeline` trong URL badge cho đúng owner/repo.)*
 
@@ -413,8 +416,9 @@ Chạy trên **push** và **pull_request** vào `main`. Các job song song:
 
 | Job | Nội dung |
 |-----|-----------|
+| **Secret scan** | `gitleaks` quét secrets trong code để chặn hardcoded credentials/token. |
 | **Dashboard** | `npm ci`, `npm run lint`, `npm run build` trong `dashboard/` (Node 20). |
-| **Python** | `pip install -r requirements.txt`, `python -m compileall -q scripts`. |
+| **Python** | `pip install -r requirements-dev.txt`, compileall + pytest unit/integration + coverage artifact. |
 | **Docker API** | `docker build -f Dockerfile.api`. |
 | **Compose** | `cp .env.example .env`, `docker compose config` để kiểm tra file Compose hợp lệ. |
 
@@ -424,7 +428,8 @@ Chạy trên **push** và **pull_request** vào `main`. Các job song song:
 
 Khi **push** lên `main` có thay đổi trong `Dockerfile.api` hoặc `scripts/**`, workflow build và đẩy image lên **GitHub Container Registry**:
 
-- Tag: `ghcr.io/<owner>/<repo>/api:latest` và `ghcr.io/<owner>/<repo>/api:<git-sha>` (tên repo được chuyển chữ thường theo yêu cầu GHCR).
+- Tag: `ghcr.io/<owner>/<repo>/api:latest` và `ghcr.io/<owner>/<repo>/api:<git-sha>`.
+- Workflow xuất metadata artifact có `image digest` để dùng cho stage validation và rollback.
 - Có thể chạy thủ công: tab **Actions** → **Publish API image** → **Run workflow**.
 
 **Kéo image về (ví dụ):**
@@ -440,6 +445,13 @@ Image này tương đương build từ [`Dockerfile.api`](Dockerfile.api); chạ
 ### 15.3 Branch protection (tùy chọn)
 
 Trên GitHub: **Settings → Branches → Branch protection rule** cho `main`: bật **Require status checks** và chọn các job CI trước khi merge.
+
+### 15.4 Workflow bổ sung cho research-grade flow
+
+- **`model-smoke.yml`**: chạy test marker `model_smoke` cho kiểm tra lightweight của kiến trúc model.
+- **`nightly-e2e.yml`**: nightly/manual e2e smoke (compose up core stack + kiểm tra `GET /api/health` + pytest marker `e2e`).
+- **`stage-validate.yml`**: manual stage validation theo **image digest** (`ghcr.io/...@sha256:...`) + health check + rollback note artifact.
+- **`release-evidence.yml`**: sinh `release-metadata.json` để truy vết code-data-model cho mỗi release/workflow run.
 
 ---
 

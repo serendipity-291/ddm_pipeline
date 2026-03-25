@@ -13,6 +13,7 @@ import numpy as np
 # Shared ML utilities
 sys.path.insert(0, os.path.dirname(__file__) if os.path.dirname(__file__) else ".")
 from ml_utils import load_model_from_registry, load_scaler, predict_window
+from config import get_env
 
 # ── Global inference state (loaded at startup) ────────────────────────────────
 _model        = None
@@ -43,12 +44,12 @@ app.add_middleware(
 # Use sys.executable → resolves correctly in Docker and on Windows host
 PYTHON_PATH = sys.executable
 
-# InfluxDB config — env var from docker-compose
-INFLUXDB_URL   = os.environ.get("INFLUXDB_URL", "http://localhost:8086")
-INFLUXDB_TOKEN = "UziSGCgplwTUlHTdRiHWPIwFasDqSPbKxqfx5C_I7rsZuICEvvgAbRD3L1_a8U4R48f7mmJs9QMxX0dmjjNdEg=="
-INFLUXDB_ORG   = "my-org"
-INFLUXDB_BUCKET = "bearing_data"
-MLFLOW_URL     = os.environ.get("MLFLOW_URL", "http://mlflow:5000")
+# InfluxDB/MLflow config — from environment
+INFLUXDB_URL = get_env("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = get_env("INFLUXDB_TOKEN", required=True)
+INFLUXDB_ORG = get_env("INFLUXDB_ORG", "my-org")
+INFLUXDB_BUCKET = get_env("INFLUXDB_BUCKET_BEARING", "bearing_data")
+MLFLOW_URL = get_env("MLFLOW_URL", "http://mlflow:5000")
 
 app.add_middleware(
     CORSMiddleware,
