@@ -42,7 +42,7 @@ flowchart LR
 |------------|---------|
 | **Docker** + **Docker Compose** | Bắt buộc để chạy full stack |
 | **Node.js** (LTS) | Chỉ cần khi build dashboard (`npm run build`) |
-| **Conda** (tùy chọn) | Dùng [setup_env.ps1](setup_env.ps1) / [environment.yml](environment.yml) cho dev Python cục bộ |
+| **Conda** (tùy chọn) | Tạo env từ [environment.yml](environment.yml) (`conda env create -f environment.yml`) cho dev Python cục bộ |
 
 ## Cài đặt nhanh
 
@@ -135,10 +135,12 @@ POST http://localhost/api/model/reload
 
 ## Phát triển cục bộ (Python)
 
-```powershell
-.\setup_env.ps1
+```bash
+conda env create -f environment.yml
 conda activate ddm_pipeline
 ```
+
+(File `*.ps1` không nằm trong repo — khai báo trong `.gitignore`.)
 
 Stack inference/production vẫn nên kiểm tra qua Docker.
 
