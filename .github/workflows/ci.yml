@@ -1,0 +1,79 @@
+# CI: dashboard lint/build, Python compile check, Docker image build, compose file validation.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard:
+    name: Dashboard (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  python-sanity:
+    name: Python (deps + compileall)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      - name: Byte-compile scripts
+        run: python -m compileall -q scripts
+
+  docker-api:
+    name: Docker (Dockerfile.api)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api image
+        run: docker build -f Dockerfile.api -t ddm-api:ci .
+
+  compose-validate:
+    name: Docker Compose (config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Placeholder env for variable substitution
+        run: cp .env.example .env
+
+      - name: Validate compose file
+        run: docker compose -f docker-compose.yml config --quiet
