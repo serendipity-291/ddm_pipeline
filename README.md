@@ -348,9 +348,9 @@ conda env create -f environment.yml
 conda activate ddm_pipeline
 ```
 
-(File `*.ps1` được liệt kê trong `.gitignore` — không đưa vào repo.)
+Các file `*.ps1` được liệt kê trong `.gitignore`.
 
-Stack đầy đủ vẫn nên chạy và kiểm tra qua **Docker**; env Conda phù hợp chỉnh sửa script và chạy unit thử nghiệm ngoài container.
+Quy trình vận hành hệ thống sử dụng Docker Compose. Môi trường Conda phục vụ phát triển và kiểm tra script Python cục bộ.
 
 ---
 
@@ -400,7 +400,7 @@ Thư mục tên bắt đầu bằng `ddm` ở root (báo cáo, tài liệu khóa
 
 ## 15. CI/CD và GitHub Actions
 
-Workflow chạy trên GitHub (Actions). Trạng thái nhánh `main`:
+Các workflow chạy trên GitHub Actions cho nhánh `main`:
 
 [![CI](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/ci.yml)
 [![Publish API](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/publish-api.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/publish-api.yml)
@@ -408,7 +408,7 @@ Workflow chạy trên GitHub (Actions). Trạng thái nhánh `main`:
 [![Nightly e2e](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/nightly-e2e.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/nightly-e2e.yml)
 [![Release evidence](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/release-evidence.yml/badge.svg?branch=main)](https://github.com/serendipity-291/ddm_pipeline/actions/workflows/release-evidence.yml)
 
-*(Nếu repo fork, đổi `serendipity-291/ddm_pipeline` trong URL badge cho đúng owner/repo.)*
+Trong trường hợp fork repository, cập nhật owner/repo trong URL badge tương ứng.
 
 ### 15.1 CI (`.github/workflows/ci.yml`)
 
@@ -424,13 +424,13 @@ Chạy trên **push** và **pull_request** vào `main`. Các job song song:
 
 `concurrency` hủy run cũ khi có commit mới trên cùng ref.
 
-### 15.2 CD — Image API trên GHCR (`.github/workflows/publish-api.yml`)
+### 15.2 CD — Publish image API lên GHCR (`.github/workflows/publish-api.yml`)
 
-Khi **push** lên `main` có thay đổi trong `Dockerfile.api` hoặc `scripts/**`, workflow build và đẩy image lên **GitHub Container Registry**:
+Khi push lên `main` có thay đổi trong `Dockerfile.api` hoặc `scripts/**`, workflow build và đẩy image lên GitHub Container Registry:
 
 - Tag: `ghcr.io/<owner>/<repo>/api:latest` và `ghcr.io/<owner>/<repo>/api:<git-sha>`.
-- Workflow xuất metadata artifact có `image digest` để dùng cho stage validation và rollback.
-- Có thể chạy thủ công: tab **Actions** → **Publish API image** → **Run workflow**.
+- Workflow xuất metadata artifact chứa `image digest` dùng cho stage validation và rollback.
+- Workflow hỗ trợ chạy thủ công qua tab **Actions** → **Publish API image** → **Run workflow**.
 
 **Kéo image về (ví dụ):**
 
@@ -438,15 +438,15 @@ Khi **push** lên `main` có thay đổi trong `Dockerfile.api` hoặc `scripts/
 docker pull ghcr.io/serendipity-291/ddm_pipeline/api:latest
 ```
 
-Image này tương đương build từ [`Dockerfile.api`](Dockerfile.api); chạy full stack vẫn nên dùng `docker compose` với build cục bộ hoặc chỉ thay image `api_server`/`drift_monitor` nếu bạn tự cấu hình compose.
+Image được build từ [`Dockerfile.api`](Dockerfile.api). Khi tích hợp với stack đầy đủ, tham chiếu image cho `api_server`/`drift_monitor` trong cấu hình Compose tương ứng.
 
-**Package visibility:** lần đầu có thể cần đặt package **public** hoặc đăng nhập `docker login ghcr.io` với PAT có quyền `read:packages` (repo private).
+**Package visibility:** thiết lập visibility của package theo chính sách repository và sử dụng `docker login ghcr.io` với quyền `read:packages` khi cần pull từ repository private.
 
-### 15.3 Branch protection (tùy chọn)
+### 15.3 Branch protection
 
 Trên GitHub: **Settings → Branches → Branch protection rule** cho `main`: bật **Require status checks** và chọn các job CI trước khi merge.
 
-### 15.4 Workflow bổ sung cho research-grade flow
+### 15.4 Workflow validation và release evidence
 
 - **`model-smoke.yml`**: chạy test marker `model_smoke` cho kiểm tra lightweight của kiến trúc model.
 - **`nightly-e2e.yml`**: nightly/manual e2e smoke (compose up core stack + kiểm tra `GET /api/health` + pytest marker `e2e`).
